@@ -40,9 +40,13 @@ void encodeFileHamming3126(const std::string &filename) {
       std::bitset<ENCODED_SIZE> encoded = encodeHamming3126(chunk);
       bit_buffer.erase(bit_buffer.begin(), bit_buffer.begin() + CHUNK_SIZE);
 
-      // Escreve no arquivo
-      uint32_t encoded_val = static_cast<uint32_t>(encoded.to_ulong());
-      outfile.write(reinterpret_cast<char *>(&encoded_val), sizeof(uint32_t));
+      // Escreve no arquivo como binário
+      // uint32_t encoded_val = static_cast<uint32_t>(encoded.to_ulong());
+      // outfile.write(reinterpret_cast<char *>(&encoded_val),
+      // sizeof(uint32_t));
+
+      // Escreve como txt
+      outfile << encoded.to_string() << " ";
     }
   }
 
@@ -56,11 +60,11 @@ void encodeFileHamming3126(const std::string &filename) {
     padding_count = CHUNK_SIZE - bit_buffer.size(); // Number of zeros added
 
     std::bitset<ENCODED_SIZE> encoded = encodeHamming3126(last_chunk);
-    uint32_t encoded_val = static_cast<uint32_t>(encoded.to_ulong());
-    outfile.write(reinterpret_cast<char *>(&encoded_val), sizeof(uint32_t));
-  }
+    // uint32_t encoded_val = static_cast<uint32_t>(encoded.to_ulong());
 
-  std::cout << padding_count << "\n";
+    outfile << encoded.to_string() << " ";
+    // outfile.write(reinterpret_cast<char *>(&encoded_val), sizeof(uint32_t));
+  }
 
   //   Append metadata chunk with padding count (5 bits stored in LSBs)
   std::bitset<CHUNK_SIZE> padding_chunk;
@@ -70,19 +74,12 @@ void encodeFileHamming3126(const std::string &filename) {
   }
 
   std::bitset<ENCODED_SIZE> encoded_padding = encodeHamming3126(padding_chunk);
-  uint32_t encoded_val = static_cast<uint32_t>(encoded_padding.to_ulong());
-  outfile.write(reinterpret_cast<char *>(&encoded_val), sizeof(uint32_t));
+  //uint32_t encoded_val = static_cast<uint32_t>(encoded_padding.to_ulong());
+  //outfile.write(reinterpret_cast<char *>(&encoded_val), sizeof(uint32_t));
+
+  outfile << encoded_padding.to_string() << " ";
 
   outfile.close();
-
-  // Debug
-  //   std::ifstream check("aaa.hamming", std::ios::binary);
-  //   uint32_t val;
-  //   while (check.read(reinterpret_cast<char *>(&val), sizeof(uint32_t))) {
-  //     std::bitset<31> bits(val);
-  //     std::cout << bits << "\n";
-  //   }
-  //   check.close();
 }
 
 // ################################
@@ -91,90 +88,73 @@ void encodeFileHamming3126(const std::string &filename) {
 
 void decodeFileHamming3126(const std::string &filename) {
 
-  // Input File (encoded)
-  std::ifstream input(filename, std::ios::binary | std::ios::ate);
+  // Input File (encoded as text)
+  std::ifstream input(filename);
   if (!input) {
-    std::cerr << "Error opening input file: " << filename << "\n";
-    return;
+      std::cerr << "Error opening input file: " << filename << "\n";
+      return;
   }
 
-  // Output File (to decode)
-  std::ofstream output(filename + ".decoded", std::ios::binary);
+  std::string baseFilename = filename;
+  const std::string suffix = ".hamming";
+  if (baseFilename.size() >= suffix.size() &&
+      baseFilename.compare(baseFilename.size() - suffix.size(), suffix.size(), suffix) == 0) {
+      baseFilename.erase(baseFilename.size() - suffix.size());
+  }
+
+  // Output File (decoded binary)
+  std::ofstream output(baseFilename + ".dec", std::ios::binary);
   if (!output) {
-    std::cerr << "Error creating output file.\n";
-    return;
+      std::cerr << "Error creating output file.\n";
+      return;
   }
 
-  // Get file size immediately
-  std::streampos file_size = input.tellg();
-  size_t total_uint32 = file_size / sizeof(uint32_t);
+  std::vector<std::string> chunks;
+  std::string chunk;
 
-  // Now go to last uint32_t
-  input.seekg(-static_cast<int>(sizeof(uint32_t)), std::ios::end);
-  uint32_t encoded_val_padding;
-  input.read(reinterpret_cast<char *>(&encoded_val_padding), sizeof(uint32_t));
-  if (!input) {
-    std::cerr << "Error reading padding.\n";
-    return;
+  // Read all bitset strings split by space
+  while (input >> chunk) {
+      chunks.push_back(chunk);
   }
 
-  // Decode
-  std::bitset<CHUNK_SIZE> decoded_padding =
-      decodeHamming3126(encoded_val_padding);
-  uint32_t padding_size = decoded_padding.to_ulong();
+  if (chunks.empty()) {
+      std::cerr << "No data found in input file.\n";
+      return;
+  }
 
-  // Reset to beginning if needed
-  input.seekg(0, std::ios::beg);
-  // Lets read the data normally till before the last one
+  // Last chunk is padding metadata
+  std::bitset<ENCODED_SIZE> padding_encoded(chunks.back());
+  std::bitset<CHUNK_SIZE> padding_decoded = decodeHamming3126(padding_encoded);
+  uint32_t padding_size = padding_decoded.to_ulong();
 
   std::vector<bool> bit_buffer;
-  size_t index = 0;
-  uint32_t encoded_val;
 
-  std::cout << total_uint32;
+  for (size_t i = 0; i < chunks.size() - 1; ++i) {
+      std::bitset<ENCODED_SIZE> encoded(chunks[i]);
+      std::bitset<CHUNK_SIZE> decoded = decodeHamming3126(encoded);
 
-  // Read all encoded chunks except the last one (which is metadata)
-  while (input.read(reinterpret_cast<char *>(&encoded_val), sizeof(uint32_t))) {
-    std::bitset<ENCODED_SIZE> encoded(encoded_val);
-    std::bitset<CHUNK_SIZE> decoded = decodeHamming3126(encoded);
-    std::cout << decoded.to_string() << "\n";
-
-    if (index < total_uint32 - 2) {
-      // Add decoded bits to buffer
-      for (int i = CHUNK_SIZE - 1; i >= 0; --i) {
-        bit_buffer.push_back(decoded[i]);
+      if (i < chunks.size() - 2) {
+          // Full chunk
+          for (int b = CHUNK_SIZE - 1; b >= 0; --b) {
+              bit_buffer.push_back(decoded[b]);
+          }
+      } else {
+          // Second to last chunk, apply padding
+          for (int b = CHUNK_SIZE - 1; b >= static_cast<int>(padding_size); --b) {
+              bit_buffer.push_back(decoded[b]);
+          }
       }
-    } else if (index == total_uint32 - 2) {
-      // Now we do everything again but we remove the calculated padding from
-      // the bit_buffer
-      for (int i = CHUNK_SIZE - 1; i >= static_cast<int>(padding_size); --i) {
-        bit_buffer.push_back(decoded[i]);
-      }
-    }
 
-    while (bit_buffer.size() >= 8) {
-      unsigned char byte = 0;
-      for (int i = 0; i < 8; ++i) {
-        byte |= (bit_buffer[i] << (7 - i));
+      // Convert every 8 bits into a byte
+      while (bit_buffer.size() >= 8) {
+          unsigned char byte = 0;
+          for (int b = 0; b < 8; ++b) {
+              byte |= (bit_buffer[b] << (7 - b));
+          }
+          output.write(reinterpret_cast<char *>(&byte), 1);
+          bit_buffer.erase(bit_buffer.begin(), bit_buffer.begin() + 8);
       }
-      output.write(reinterpret_cast<char *>(&byte), 1);
-      bit_buffer.erase(bit_buffer.begin(), bit_buffer.begin() + 8);
-    }
-
-    ++index;
   }
 
-  // Debug
-  //   std::ifstream check("aaa.hamming.decoded", std::ios::binary);
-  //   if (!check) {
-  //     std::cerr << "Cannot open decoded file for reading\n";
-  //     return;
-  //   }
-
-  //   char c;
-  //   while (check.get(c)) {
-  //     std::bitset<8> bits(static_cast<unsigned char>(c));
-  //     std::cout << bits << "\n";
-  //   }
-  //   check.close();
+  output.close();
 }
