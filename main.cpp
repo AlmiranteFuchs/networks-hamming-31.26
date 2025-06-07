@@ -1,7 +1,4 @@
-#include "src/decoder.h"
-#include "src/encoder.h"
 #include "src/hamming.h"
-#include <bitset>
 #include <iostream>
 #include <string>
 
@@ -39,11 +36,6 @@ int main(int argc, char *argv[]) {
     // std::cout << "Encoding file: " << filename << "\n";
     std::cout << "Encoding: '" << filename << "'\n";
     encodeFileHamming3126(filename);
-
-    // std::cout << decodeHamming3126(std::bitset<31>("0110000101100001101100000100111")).to_string() << "\n";
-    // std::cout << decodeHamming3126(std::bitset<31>("1000010000000000000000000001001")).to_string() << "\n";
-    // std::cout << decodeHamming3126(std::bitset<31>("0000000000000000000000110101011")).to_string() << "\n";
-
     break;
   }
   case 'd':
@@ -52,7 +44,7 @@ int main(int argc, char *argv[]) {
     break;
 
   case 's':
-    std::cout << "Simulating corruption on file: " << filename << "\n";
+    std::cout << "Simulating corruption on file: NOT IMPLEMENTED" << filename << "\n";
     // simulateError(filename);
     break;
 

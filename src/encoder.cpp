@@ -1,6 +1,5 @@
 #include "encoder.h"
 #include <bitset>
-#include <iostream>
 
 std::bitset<31> encodeHamming3126(const std::bitset<26> &data) {
   std::bitset<31> encoded;
